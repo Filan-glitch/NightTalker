@@ -1,14 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../detection/segment_event.dart';
-import '../recording/clip_segmenter.dart';
+import '../recording/recording_task_handler.dart';
+import '../recording/task_message.dart';
 
-/// Build-step 2 scaffold: [ClipSegmenter] driven directly in the UI isolate
-/// — no background service yet. This screen is extended in later build
-/// steps (permission gating via `permissions_controller.dart`,
-/// foreground-service-backed recording, navigation to a results screen).
+/// Build-step 3 scaffold: recording runs inside [RecordingTaskHandler] in the
+/// foreground service's isolate, not here — this screen is a thin remote
+/// control that starts/stops the service and mirrors its state via
+/// `FlutterForegroundTask.addTaskDataCallback`. Extended in later build
+/// steps (a dedicated permission-gating flow, navigation to a results
+/// screen).
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -17,10 +22,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _segmenter = ClipSegmenter();
-  StreamSubscription<SegmentEvent>? _segmentEventSub;
-  StreamSubscription<String>? _clipSavedSub;
-
   bool _listening = false;
   bool _recordingClip = false;
   int _clipCount = 0;
@@ -29,32 +30,99 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _segmentEventSub = _segmenter.onSegmentEvent.listen((event) {
-      setState(() => _recordingClip = event.type == SegmentEventType.started);
-    });
-    _clipSavedSub = _segmenter.onClipSaved.listen((path) {
-      setState(() {
-        _clipCount++;
-        _lastClipPath = path;
-      });
+    FlutterForegroundTask.addTaskDataCallback(_onTaskData);
+    // The service may still be running from a previous app session (it
+    // deliberately survives the app being backgrounded/closed).
+    FlutterForegroundTask.isRunningService.then((running) {
+      if (mounted && running) setState(() => _listening = true);
     });
   }
 
-  Future<void> _start() async {
-    if (!await _segmenter.hasPermission()) {
-      if (!mounted) return;
+  void _onTaskData(Object data) {
+    final message = decodeTaskMessage(data);
+    switch (message) {
+      case SegmentEventMessage(:final type):
+        setState(() => _recordingClip = type == SegmentEventType.started);
+      case ClipSavedMessage(:final path):
+        setState(() {
+          _clipCount++;
+          _lastClipPath = path;
+        });
+      case null:
+        break;
+    }
+  }
+
+  Future<bool> _ensurePermissions() async {
+    if (!await Permission.microphone.request().then((s) => s.isGranted)) {
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Microphone permission is required to record.')),
       );
+      return false;
+    }
+
+    if (await FlutterForegroundTask.checkNotificationPermission() != NotificationPermission.granted) {
+      await FlutterForegroundTask.requestNotificationPermission();
+    }
+
+    if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+      await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+    }
+
+    return true;
+  }
+
+  void _initForegroundTask() {
+    // Cheap and idempotent (just sets static config) — safe to call every
+    // Start rather than tracking whether it already ran.
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'nighttalker_recording',
+        channelName: 'Recording session',
+        channelDescription: 'Shows while NightTalker is listening overnight.',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.nothing(), // ClipSegmenter is stream-driven, not polled
+        // Keep recording even if the user swipes the app off recent apps —
+        // this app's whole purpose is surviving a night the phone isn't touched.
+        stopWithTask: false,
+      ),
+    );
+  }
+
+  Future<void> _start() async {
+    if (!await _ensurePermissions()) return;
+
+    _initForegroundTask();
+    final result = await FlutterForegroundTask.startService(
+      serviceTypes: const [ForegroundServiceTypes.microphone],
+      notificationTitle: 'NightTalker',
+      notificationText: 'Listening… · 0 clips saved',
+      callback: startRecordingCallback,
+    );
+    if (result is ServiceRequestFailure) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not start recording: ${result.error}')));
       return;
     }
-    await _segmenter.start();
+
     if (!mounted) return;
-    setState(() => _listening = true);
+    setState(() {
+      _listening = true;
+      _recordingClip = false;
+      _clipCount = 0;
+      _lastClipPath = null;
+    });
   }
 
   Future<void> _stop() async {
-    await _segmenter.stop();
+    await FlutterForegroundTask.stopService();
     if (!mounted) return;
     setState(() {
       _listening = false;
@@ -64,9 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _segmentEventSub?.cancel();
-    _clipSavedSub?.cancel();
-    _segmenter.dispose();
+    FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
     super.dispose();
   }
 
