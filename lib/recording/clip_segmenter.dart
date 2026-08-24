@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
-
 import '../core/constants.dart';
 import '../detection/amplitude_sample.dart';
 import '../detection/amplitude_threshold_detector.dart';
 import '../detection/segment_event.dart';
 import 'audio_source.dart';
+import 'clips_directory.dart';
 import 'pcm_ring_buffer.dart';
 import 'wav_writer.dart';
 
@@ -40,7 +39,7 @@ class ClipSegmenter {
              amplitudePollInterval: amplitudePollInterval,
            ),
        _clock = clock ?? DateTime.now,
-       _clipsDirectory = clipsDirectory ?? _defaultClipsDirectory,
+       _clipsDirectory = clipsDirectory ?? resolveClipsDirectory,
        _detector = AmplitudeThresholdDetector(thresholdDb: thresholdDb, minSustained: minSustained, hangover: hangover),
        _ringBuffer = PcmRingBuffer(
          maxBytes: _bytesFor(duration: minSustained, sampleRate: sampleRate, numChannels: numChannels, bitsPerSample: bitsPerSample),
@@ -134,14 +133,5 @@ class ClipSegmenter {
     final bytesPerSecond = sampleRate * numChannels * bitsPerSample ~/ 8;
     final bytes = (bytesPerSecond * duration.inMicroseconds) ~/ Duration.microsecondsPerSecond;
     return bytes < 1 ? 1 : bytes;
-  }
-
-  static Future<Directory> _defaultClipsDirectory() async {
-    final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}/clips');
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
   }
 }

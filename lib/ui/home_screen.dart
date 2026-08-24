@@ -7,13 +7,13 @@ import 'package:permission_handler/permission_handler.dart';
 import '../detection/segment_event.dart';
 import '../recording/recording_task_handler.dart';
 import '../recording/task_message.dart';
+import 'results_screen.dart';
 
-/// Build-step 3 scaffold: recording runs inside [RecordingTaskHandler] in the
+/// Build-step 4 scaffold: recording runs inside [RecordingTaskHandler] in the
 /// foreground service's isolate, not here — this screen is a thin remote
 /// control that starts/stops the service and mirrors its state via
 /// `FlutterForegroundTask.addTaskDataCallback`. Extended in later build
-/// steps (a dedicated permission-gating flow, navigation to a results
-/// screen).
+/// steps (a dedicated permission-gating flow).
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -141,7 +141,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final status = !_listening ? 'Idle' : (_recordingClip ? 'Recording…' : 'Listening…');
 
     return Scaffold(
-      appBar: AppBar(title: const Text('NightTalker')),
+      appBar: AppBar(
+        title: const Text('NightTalker'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Clips',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ResultsScreen())),
+          ),
+        ],
+      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
