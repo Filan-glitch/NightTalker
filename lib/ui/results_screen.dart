@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../playback/clip_info.dart';
 import '../playback/clips_repository.dart';
@@ -54,6 +55,33 @@ class _ResultsScreenState extends State<ResultsScreen> {
     setState(() => _playingPath = clip.path);
   }
 
+  Future<void> _share(ClipInfo clip) async {
+    await SharePlus.instance.share(ShareParams(files: [XFile(clip.path)]));
+  }
+
+  Future<void> _delete(ClipInfo clip) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete this clip?'),
+        content: const Text("This can't be undone."),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    if (_playingPath == clip.path) {
+      await _player.stop();
+      _playingPath = null;
+    }
+    await _repository.deleteClip(clip);
+    if (!mounted) return;
+    setState(() => _clips = _clips?.where((c) => c.path != clip.path).toList());
+  }
+
   @override
   void dispose() {
     _player.dispose();
@@ -81,6 +109,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
               ),
               title: Text(DateFormat.yMMMd().add_Hms().format(clip.recordedAt)),
               subtitle: Text(_formatDuration(clip.duration)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(icon: const Icon(Icons.share), tooltip: 'Share', onPressed: () => _share(clip)),
+                  IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: () => _delete(clip)),
+                ],
+              ),
             );
           },
         ),

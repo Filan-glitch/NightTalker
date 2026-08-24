@@ -40,4 +40,26 @@ void main() {
 
     expect(await repository.listClips(), isEmpty);
   });
+
+  group('deleteClip', () {
+    test('removes the file from disk', () async {
+      await writeClip(tempDir, 100);
+      final repository = ClipsRepository(clipsDirectory: () async => tempDir);
+      final clip = (await repository.listClips()).single;
+      expect(File(clip.path).existsSync(), isTrue);
+
+      await repository.deleteClip(clip);
+
+      expect(File(clip.path).existsSync(), isFalse);
+    });
+
+    test('does not throw when the file is already gone', () async {
+      await writeClip(tempDir, 200);
+      final repository = ClipsRepository(clipsDirectory: () async => tempDir);
+      final clip = (await repository.listClips()).single;
+      await File(clip.path).delete();
+
+      await expectLater(repository.deleteClip(clip), completes);
+    });
+  });
 }
