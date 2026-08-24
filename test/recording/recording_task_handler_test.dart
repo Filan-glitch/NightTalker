@@ -61,11 +61,14 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  RecordingTaskHandler buildHandler() => RecordingTaskHandler(
-    segmenter: segmenter,
-    sendData: sentData.add,
-    updateNotificationText: notificationTexts.add,
-  );
+  RecordingTaskHandler buildHandler({Duration? autoStopCap, Future<void> Function()? stopService}) =>
+      RecordingTaskHandler(
+        segmenter: segmenter,
+        sendData: sentData.add,
+        updateNotificationText: notificationTexts.add,
+        autoStopCap: autoStopCap,
+        stopService: stopService,
+      );
 
   Future<void> tick(int atMs, int pcmByte, double db) async {
     now = DateTime(2026).add(Duration(milliseconds: atMs));
@@ -126,5 +129,33 @@ void main() {
 
     final saved = sentData.where((d) => (d as Map)['kind'] == 'clipSaved');
     expect(saved, isNotEmpty);
+  });
+
+  test('stops itself and notifies the UI once autoStopCap elapses', () async {
+    var stopServiceCallCount = 0;
+    final handler = buildHandler(
+      autoStopCap: const Duration(milliseconds: 5),
+      stopService: () async => stopServiceCallCount++,
+    );
+
+    await handler.onStart(DateTime(2026), TaskStarter.developer);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(stopServiceCallCount, 1);
+    expect(sentData, contains(equals({'kind': 'autoStopped'})));
+  });
+
+  test('onDestroy cancels the pending auto-stop so it never fires after a manual stop', () async {
+    var stopServiceCallCount = 0;
+    final handler = buildHandler(
+      autoStopCap: const Duration(milliseconds: 5),
+      stopService: () async => stopServiceCallCount++,
+    );
+
+    await handler.onStart(DateTime(2026), TaskStarter.developer);
+    await handler.onDestroy(DateTime(2026), false); // manual stop, before the cap
+    await Future<void>.delayed(const Duration(milliseconds: 50)); // past when the cap would fire
+
+    expect(stopServiceCallCount, 0);
   });
 }

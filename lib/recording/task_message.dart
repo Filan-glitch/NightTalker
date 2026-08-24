@@ -33,6 +33,16 @@ class ClipSavedMessage extends TaskMessage {
   Map<String, Object?> toMap() => {'kind': 'clipSaved', 'path': path};
 }
 
+/// The service is about to stop itself after [SessionConstants.safetyAutoStopCap]
+/// — sent right before `stopService()` so the UI can reflect it immediately
+/// rather than waiting to notice the service died.
+class AutoStoppedMessage extends TaskMessage {
+  const AutoStoppedMessage();
+
+  @override
+  Map<String, Object?> toMap() => {'kind': 'autoStopped'};
+}
+
 /// Parses data received via `FlutterForegroundTask.sendDataToMain` /
 /// `addTaskDataCallback` back into a [TaskMessage]. Returns null for
 /// anything unrecognized rather than throwing — the sender and receiver run
@@ -50,6 +60,8 @@ TaskMessage? decodeTaskMessage(Object? raw) {
     case 'clipSaved':
       final path = raw['path'];
       return path is String ? ClipSavedMessage(path) : null;
+    case 'autoStopped':
+      return const AutoStoppedMessage();
     default:
       return null;
   }

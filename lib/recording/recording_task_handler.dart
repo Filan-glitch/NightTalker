@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import '../core/constants.dart';
 import '../detection/segment_event.dart';
 import 'clip_segmenter.dart';
 import 'task_message.dart';
@@ -22,16 +23,23 @@ class RecordingTaskHandler extends TaskHandler {
     ClipSegmenter? segmenter,
     void Function(Object data)? sendData,
     void Function(String text)? updateNotificationText,
+    Duration? autoStopCap,
+    Future<void> Function()? stopService,
   }) : _segmenter = segmenter ?? ClipSegmenter(),
        _sendData = sendData ?? FlutterForegroundTask.sendDataToMain,
-       _updateNotificationText = updateNotificationText ?? _defaultUpdateNotificationText;
+       _updateNotificationText = updateNotificationText ?? _defaultUpdateNotificationText,
+       _autoStopCap = autoStopCap ?? SessionConstants.safetyAutoStopCap,
+       _stopService = stopService ?? FlutterForegroundTask.stopService;
 
   final ClipSegmenter _segmenter;
   final void Function(Object data) _sendData;
   final void Function(String text) _updateNotificationText;
+  final Duration _autoStopCap;
+  final Future<void> Function() _stopService;
 
   StreamSubscription<SegmentEvent>? _segmentEventSub;
   StreamSubscription<String>? _clipSavedSub;
+  Timer? _autoStopTimer;
   bool _recording = false;
   int _clipCount = 0;
 
@@ -48,6 +56,10 @@ class RecordingTaskHandler extends TaskHandler {
       _updateNotificationText(_statusText());
     });
 
+    // Guards against a forgotten session draining battery/storage
+    // indefinitely — independent of the user ever tapping Stop.
+    _autoStopTimer = Timer(_autoStopCap, _onAutoStopCapReached);
+
     await _segmenter.start();
     _updateNotificationText(_statusText());
   }
@@ -57,10 +69,16 @@ class RecordingTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    _autoStopTimer?.cancel(); // no-op if already fired; avoids a stale stopService() later
     await _segmenter.stop(); // finalizes a clip still open rather than discarding it
     await _segmentEventSub?.cancel();
     await _clipSavedSub?.cancel();
     await _segmenter.dispose();
+  }
+
+  void _onAutoStopCapReached() {
+    _sendData(const AutoStoppedMessage().toMap());
+    unawaited(_stopService()); // triggers onDestroy via the plugin's normal service lifecycle
   }
 
   String _statusText() {

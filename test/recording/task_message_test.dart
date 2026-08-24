@@ -25,6 +25,16 @@ void main() {
     });
   });
 
+  group('AutoStoppedMessage', () {
+    test('round-trips through toMap/decodeTaskMessage', () {
+      const message = AutoStoppedMessage();
+
+      final decoded = decodeTaskMessage(message.toMap());
+
+      expect(decoded, isA<AutoStoppedMessage>());
+    });
+  });
+
   group('decodeTaskMessage', () {
     test('returns null for data that is not a recognized message', () {
       expect(decodeTaskMessage('not a map'), isNull);

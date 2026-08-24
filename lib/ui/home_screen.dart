@@ -48,6 +48,16 @@ class _HomeScreenState extends State<HomeScreen> {
           _clipCount++;
           _lastClipPath = path;
         });
+      case AutoStoppedMessage():
+        setState(() {
+          _listening = false;
+          _recordingClip = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Session auto-stopped after 11h to save battery/storage.')));
+        }
       case null:
         break;
     }
