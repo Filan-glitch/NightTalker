@@ -7,13 +7,16 @@ import 'package:permission_handler/permission_handler.dart';
 import '../detection/segment_event.dart';
 import '../recording/recording_task_handler.dart';
 import '../recording/task_message.dart';
+import 'permissions_screen.dart';
 import 'results_screen.dart';
 
-/// Build-step 4 scaffold: recording runs inside [RecordingTaskHandler] in the
-/// foreground service's isolate, not here — this screen is a thin remote
-/// control that starts/stops the service and mirrors its state via
-/// `FlutterForegroundTask.addTaskDataCallback`. Extended in later build
-/// steps (a dedicated permission-gating flow).
+/// Recording runs inside [RecordingTaskHandler] in the foreground service's
+/// isolate, not here — this screen is a thin remote control that starts/
+/// stops the service and mirrors its state via
+/// `FlutterForegroundTask.addTaskDataCallback`. Reached only once the
+/// microphone permission is granted — see [PermissionsScreen], which owns
+/// all permission requesting; this screen only ever checks (never requests)
+/// and redirects back there if something's missing.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -63,24 +66,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<bool> _ensurePermissions() async {
-    if (!await Permission.microphone.request().then((s) => s.isGranted)) {
-      if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Microphone permission is required to record.')),
-      );
-      return false;
-    }
+  /// Read-only — requesting permissions is [PermissionsScreen]'s job.
+  /// Redirects there (replacing this route) if the microphone got revoked
+  /// mid-session (e.g. via system settings) instead of trying to record
+  /// without it.
+  Future<bool> _ensureMicPermission() async {
+    if (await Permission.microphone.status.then((s) => s.isGranted)) return true;
 
-    if (await FlutterForegroundTask.checkNotificationPermission() != NotificationPermission.granted) {
-      await FlutterForegroundTask.requestNotificationPermission();
-    }
-
-    if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
-      await FlutterForegroundTask.requestIgnoreBatteryOptimization();
-    }
-
-    return true;
+    if (!mounted) return false;
+    unawaited(
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PermissionsScreen())),
+    );
+    return false;
   }
 
   void _initForegroundTask() {
@@ -105,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _start() async {
-    if (!await _ensurePermissions()) return;
+    if (!await _ensureMicPermission()) return;
 
     _initForegroundTask();
     final result = await FlutterForegroundTask.startService(

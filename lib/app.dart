@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'ui/home_screen.dart';
+import 'ui/permissions_screen.dart';
 
-/// Root widget. Routing to a results screen is added in a later build step.
+/// Root widget. Starts at [PermissionsScreen], which advances to
+/// [HomeScreen] once the microphone permission is granted.
 class NightTalkerApp extends StatelessWidget {
   const NightTalkerApp({super.key});
 
@@ -11,7 +12,7 @@ class NightTalkerApp extends StatelessWidget {
     return MaterialApp(
       title: 'NightTalker',
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
-      home: const HomeScreen(),
+      home: const PermissionsScreen(),
     );
   }
 }
