@@ -4,6 +4,8 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../core/constants.dart';
 import '../detection/segment_event.dart';
+import '../settings/detection_settings.dart';
+import '../settings/detection_settings_store.dart';
 import 'clip_segmenter.dart';
 import 'task_message.dart';
 
@@ -25,18 +27,28 @@ class RecordingTaskHandler extends TaskHandler {
     void Function(String text)? updateNotificationText,
     Duration? autoStopCap,
     Future<void> Function()? stopService,
-  }) : _segmenter = segmenter ?? ClipSegmenter(),
+    Future<DetectionSettings> Function()? loadSettings,
+    ClipSegmenter Function(DetectionSettings settings)? buildSegmenter,
+  }) : _providedSegmenter = segmenter,
        _sendData = sendData ?? FlutterForegroundTask.sendDataToMain,
        _updateNotificationText = updateNotificationText ?? _defaultUpdateNotificationText,
        _autoStopCap = autoStopCap ?? SessionConstants.safetyAutoStopCap,
-       _stopService = stopService ?? FlutterForegroundTask.stopService;
+       _stopService = stopService ?? FlutterForegroundTask.stopService,
+       _loadSettings = loadSettings ?? DetectionSettingsStore.load,
+       _buildSegmenter = buildSegmenter ?? _defaultBuildSegmenter;
 
-  final ClipSegmenter _segmenter;
+  // Null means "build one from persisted DetectionSettings in onStart" —
+  // can't do that here since loading them is async and constructors can't
+  // await. Tests that inject a segmenter skip settings loading entirely.
+  final ClipSegmenter? _providedSegmenter;
   final void Function(Object data) _sendData;
   final void Function(String text) _updateNotificationText;
   final Duration _autoStopCap;
   final Future<void> Function() _stopService;
+  final Future<DetectionSettings> Function() _loadSettings;
+  final ClipSegmenter Function(DetectionSettings settings) _buildSegmenter;
 
+  late final ClipSegmenter _segmenter;
   StreamSubscription<SegmentEvent>? _segmentEventSub;
   StreamSubscription<String>? _clipSavedSub;
   Timer? _autoStopTimer;
@@ -45,6 +57,14 @@ class RecordingTaskHandler extends TaskHandler {
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    final provided = _providedSegmenter;
+    if (provided != null) {
+      _segmenter = provided;
+    } else {
+      final settings = await _loadSettings();
+      _segmenter = _buildSegmenter(settings);
+    }
+
     _segmentEventSub = _segmenter.onSegmentEvent.listen((event) {
       _recording = event.type == SegmentEventType.started;
       _sendData(SegmentEventMessage(event.type).toMap());
@@ -90,6 +110,13 @@ class RecordingTaskHandler extends TaskHandler {
   static void _defaultUpdateNotificationText(String text) {
     unawaited(FlutterForegroundTask.updateService(notificationText: text));
   }
+
+  static ClipSegmenter _defaultBuildSegmenter(DetectionSettings settings) => ClipSegmenter(
+    thresholdDb: settings.thresholdDb,
+    minSustained: settings.minSustained,
+    hangover: settings.hangover,
+    gracePeriod: settings.fallAsleepGracePeriod,
+  );
 }
 
 /// The callback function must be a top-level or static function — the

@@ -60,6 +60,7 @@ void main() {
       thresholdDb: -30,
       minSustained: const Duration(milliseconds: 200),
       hangover: const Duration(milliseconds: 200),
+      gracePeriod: Duration.zero,
       sampleRate: 10, // 10 bytes/sec at 8-bit mono => 1 byte per 100ms tick
       numChannels: 1,
       bitsPerSample: 8,
@@ -109,6 +110,7 @@ void main() {
       thresholdDb: -30,
       minSustained: const Duration(milliseconds: 200),
       hangover: const Duration(milliseconds: 200),
+      gracePeriod: Duration.zero,
       sampleRate: 10,
       numChannels: 1,
       bitsPerSample: 8,
@@ -150,6 +152,7 @@ void main() {
       thresholdDb: -30,
       minSustained: const Duration(milliseconds: 200),
       hangover: const Duration(milliseconds: 200),
+      gracePeriod: Duration.zero,
       sampleRate: 10,
       numChannels: 1,
       bitsPerSample: 8,
@@ -195,6 +198,51 @@ void main() {
 
     expect(clipSavedClosed, isTrue);
     expect(segmentEventClosed, isTrue);
+  });
+
+  test('during the grace period, samples never reach the detector — no segment can open', () async {
+    final source = FakeAudioSource();
+    var now = DateTime(2026);
+
+    final segmenter = ClipSegmenter(
+      audioSource: source,
+      clock: () => now,
+      clipsDirectory: () async => tempDir,
+      thresholdDb: -30,
+      minSustained: const Duration(milliseconds: 200),
+      hangover: const Duration(milliseconds: 200),
+      gracePeriod: const Duration(milliseconds: 500),
+      sampleRate: 10,
+      numChannels: 1,
+      bitsPerSample: 8,
+    );
+
+    final eventTypes = <SegmentEventType>[];
+    segmenter.onSegmentEvent.listen((e) => eventTypes.add(e.type));
+
+    await segmenter.start();
+
+    Future<void> tick(int atMs, int pcmByte, double db) async {
+      now = DateTime(2026).add(Duration(milliseconds: atMs));
+      source.emitPcm(pcmByte);
+      await pumpEventQueue();
+      source.emitAmplitude(db);
+      await pumpEventQueue();
+    }
+
+    // Loud for a full 200ms sustained streak, but entirely inside the 500ms
+    // grace window — must not open a segment.
+    await tick(0, 0xD0, -10);
+    await tick(200, 0xD1, -10);
+    expect(eventTypes, isEmpty);
+
+    // Still loud, now past the grace window: the same sustained-duration
+    // pattern opens a segment normally, timed from this point.
+    await tick(500, 0xD2, -10);
+    await tick(700, 0xD3, -10);
+    expect(eventTypes, [SegmentEventType.started]);
+
+    await segmenter.stop();
   });
 
   test('hasPermission delegates to the audio source', () async {

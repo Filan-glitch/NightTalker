@@ -1,10 +1,11 @@
 /// Tunable detection/session constants.
 ///
 /// This file is the single place amplitude-detection and session-safety
-/// thresholds live. It is the first candidate for a future Settings screen —
-/// none of these are user-configurable in the MVP, and the defaults below
-/// are starting points that will need tuning against real overnight
-/// recordings (bedroom noise floor, phone mic sensitivity, etc.).
+/// thresholds live. These are the defaults `DetectionSettings` starts from —
+/// the settings screen (build step 7) lets a user override them, persisted
+/// via `flutter_foreground_task`'s storage. The values below are starting
+/// points that will need tuning against real overnight recordings (bedroom
+/// noise floor, phone mic sensitivity, etc.).
 library;
 
 /// Thresholds driving [AmplitudeThresholdDetector] and [ClipSegmenter].
@@ -24,6 +25,12 @@ abstract final class DetectionConstants {
 
   /// How often the amplitude stream is polled.
   static const Duration amplitudePollInterval = Duration(milliseconds: 200);
+
+  /// How long after a session starts [ClipSegmenter] ignores amplitude
+  /// entirely — no detection, so no clip can open — giving the user time to
+  /// settle in and fall asleep without the sounds of doing so being
+  /// recorded. Zero disables it.
+  static const Duration fallAsleepGracePeriod = Duration(minutes: 15);
 }
 
 /// Session-level safety constants.

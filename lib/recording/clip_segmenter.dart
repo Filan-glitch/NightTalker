@@ -28,6 +28,7 @@ class ClipSegmenter {
     Duration minSustained = DetectionConstants.minSustainedDuration,
     Duration hangover = DetectionConstants.silenceHangover,
     Duration amplitudePollInterval = DetectionConstants.amplitudePollInterval,
+    this.gracePeriod = DetectionConstants.fallAsleepGracePeriod,
     this.sampleRate = 16000,
     this.numChannels = 1,
     this.bitsPerSample = 16,
@@ -48,6 +49,7 @@ class ClipSegmenter {
   final int sampleRate;
   final int numChannels;
   final int bitsPerSample;
+  final Duration gracePeriod;
 
   final AudioSource _audioSource;
   final DateTime Function() _clock;
@@ -61,6 +63,7 @@ class ClipSegmenter {
   StreamSubscription<void>? _pcmSub;
   StreamSubscription<void>? _ampSub;
   WavWriter? _openClip;
+  DateTime? _sessionStartedAt;
 
   /// Emits the path of each clip as soon as it's written to disk.
   Stream<String> get onClipSaved => _clipSavedController.stream;
@@ -76,6 +79,7 @@ class ClipSegmenter {
   /// Starts the continuous listening session.
   Future<void> start() async {
     final pcmStream = await _audioSource.startStream();
+    _sessionStartedAt = _clock();
 
     _pcmSub = pcmStream.listen((bytes) {
       _ringBuffer.add(bytes);
@@ -83,7 +87,15 @@ class ClipSegmenter {
     });
 
     _ampSub = _audioSource.amplitudeStream.listen((db) {
-      final event = _detector.addSample(AmplitudeSample(db, _clock()));
+      final now = _clock();
+      // Ignore amplitude entirely while still inside the grace period — no
+      // sample reaches the detector, so no segment can open. The ring
+      // buffer above keeps running regardless (it's the pre-roll, never
+      // persisted unless a segment opens), so nothing here is discarded
+      // audio — it's audio that's simply never evaluated.
+      if (now.difference(_sessionStartedAt!) < gracePeriod) return;
+
+      final event = _detector.addSample(AmplitudeSample(db, now));
       if (event == null) return;
       _segmentEventController.add(event);
       switch (event.type) {

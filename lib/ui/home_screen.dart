@@ -9,6 +9,7 @@ import '../recording/recording_task_handler.dart';
 import '../recording/task_message.dart';
 import 'permissions_screen.dart';
 import 'results_screen.dart';
+import 'settings_screen.dart';
 
 /// Recording runs inside [RecordingTaskHandler] in the foreground service's
 /// isolate, not here — this screen is a thin remote control that starts/
@@ -155,6 +156,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.history),
             tooltip: 'Clips',
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ResultsScreen())),
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
           ),
         ],
       ),

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nighttalker/recording/audio_source.dart';
 import 'package:nighttalker/recording/clip_segmenter.dart';
 import 'package:nighttalker/recording/recording_task_handler.dart';
+import 'package:nighttalker/settings/detection_settings.dart';
 
 /// Same fake used by clip_segmenter_test.dart — kept local since test files
 /// don't share fixtures across files in this project.
@@ -49,6 +50,7 @@ void main() {
       thresholdDb: -30,
       minSustained: const Duration(milliseconds: 200),
       hangover: const Duration(milliseconds: 200),
+      gracePeriod: Duration.zero,
       sampleRate: 10,
       numChannels: 1,
       bitsPerSample: 8,
@@ -157,5 +159,73 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 50)); // past when the cap would fire
 
     expect(stopServiceCallCount, 0);
+  });
+
+  test('onStart never loads settings when a segmenter is already provided', () async {
+    var loadCount = 0;
+    final handler = RecordingTaskHandler(
+      segmenter: segmenter,
+      sendData: sentData.add,
+      updateNotificationText: notificationTexts.add,
+      loadSettings: () async {
+        loadCount++;
+        return DetectionSettings.defaults;
+      },
+    );
+
+    await handler.onStart(DateTime(2026), TaskStarter.developer);
+
+    expect(loadCount, 0);
+  });
+
+  test('onStart loads settings and builds a segmenter that actually uses them', () async {
+    var loadCount = 0;
+    final fakeSource = FakeAudioSource();
+    var buildNow = DateTime(2026);
+
+    final handler = RecordingTaskHandler(
+      sendData: sentData.add,
+      updateNotificationText: notificationTexts.add,
+      loadSettings: () async {
+        loadCount++;
+        return const DetectionSettings(
+          thresholdDb: -10,
+          minSustained: Duration(milliseconds: 100),
+          hangover: Duration(milliseconds: 100),
+          fallAsleepGracePeriod: Duration.zero,
+        );
+      },
+      buildSegmenter: (settings) => ClipSegmenter(
+        audioSource: fakeSource,
+        clock: () => buildNow,
+        clipsDirectory: () async => tempDir,
+        thresholdDb: settings.thresholdDb,
+        minSustained: settings.minSustained,
+        hangover: settings.hangover,
+        gracePeriod: settings.fallAsleepGracePeriod,
+        sampleRate: 10,
+        numChannels: 1,
+        bitsPerSample: 8,
+      ),
+    );
+
+    await handler.onStart(DateTime(2026), TaskStarter.developer);
+    expect(loadCount, 1);
+
+    // Drive it with the loaded settings' 100ms minSustained (not the
+    // 200ms the shared `segmenter` in setUp uses) — a segment opening
+    // here proves the loaded values actually reached the built segmenter.
+    Future<void> tick(int atMs, int pcmByte, double db) async {
+      buildNow = DateTime(2026).add(Duration(milliseconds: atMs));
+      fakeSource.emitPcm(pcmByte);
+      await pumpEventQueue();
+      fakeSource.emitAmplitude(db);
+      await pumpEventQueue();
+    }
+
+    await tick(0, 0xE0, -10);
+    await tick(100, 0xE1, -10);
+
+    expect(sentData, contains(equals({'kind': 'segmentEvent', 'eventType': 'started'})));
   });
 }
