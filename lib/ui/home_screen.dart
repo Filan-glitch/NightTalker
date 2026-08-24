@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../core/theme.dart';
 import '../detection/segment_event.dart';
 import '../recording/recording_task_handler.dart';
 import '../recording/task_message.dart';
+import 'breathing_ring.dart';
 import 'permissions_screen.dart';
 import 'results_screen.dart';
 import 'settings_screen.dart';
@@ -29,7 +31,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _listening = false;
   bool _recordingClip = false;
   int _clipCount = 0;
-  String? _lastClipPath;
 
   @override
   void initState() {
@@ -47,11 +48,8 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (message) {
       case SegmentEventMessage(:final type):
         setState(() => _recordingClip = type == SegmentEventType.started);
-      case ClipSavedMessage(:final path):
-        setState(() {
-          _clipCount++;
-          _lastClipPath = path;
-        });
+      case ClipSavedMessage():
+        setState(() => _clipCount++);
       case AutoStoppedMessage():
         setState(() {
           _listening = false;
@@ -125,7 +123,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _listening = true;
       _recordingClip = false;
       _clipCount = 0;
-      _lastClipPath = null;
     });
   }
 
@@ -147,6 +144,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final status = !_listening ? 'Idle' : (_recordingClip ? 'Recording…' : 'Listening…');
+    final ringState = !_listening
+        ? RingState.idle
+        : (_recordingClip ? RingState.recording : RingState.listening);
+    final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
       appBar: AppBar(
@@ -164,24 +165,35 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(status, style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text('$_clipCount clip${_clipCount == 1 ? '' : 's'} saved'),
-            if (_lastClipPath != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(_lastClipPath!, style: Theme.of(context).textTheme.bodySmall),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          child: Column(
+            children: [
+              const Spacer(flex: 2),
+              BreathingRing(
+                state: ringState,
+                size: 260,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(status, maxLines: 1, style: textTheme.titleLarge),
+                ),
               ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _listening ? _stop : _start,
-              child: Text(_listening ? 'Stop' : 'Start'),
-            ),
-          ],
+              const SizedBox(height: 28),
+              Text(
+                _clipCount == 0 ? 'No clips yet' : '$_clipCount clip${_clipCount == 1 ? '' : 's'} saved',
+                style: textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
+              ),
+              const Spacer(flex: 3),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _listening ? _stop : _start,
+                  child: Text(_listening ? 'Stop listening' : 'Start listening'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

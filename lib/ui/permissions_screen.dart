@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../core/theme.dart';
 import 'home_screen.dart';
 
 /// The app's initial route. Checks permission status on launch (no prompts)
@@ -143,7 +144,7 @@ class _PermissionRow extends StatelessWidget {
         title: Text(title),
         subtitle: Text(description),
         trailing: granted
-            ? const Icon(Icons.check_circle, color: Colors.green)
+            ? const Icon(Icons.check_circle, color: AppColors.moonlight)
             : OutlinedButton(onPressed: onGrant, child: const Text('Grant')),
       ),
     );

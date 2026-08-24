@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../core/theme.dart';
 import '../playback/clip_info.dart';
 import '../playback/clips_repository.dart';
 
@@ -96,25 +97,41 @@ class _ResultsScreenState extends State<ResultsScreen> {
       appBar: AppBar(title: const Text('Clips')),
       body: switch (clips) {
         null => const Center(child: CircularProgressIndicator()),
-        [] => const Center(child: Text('No clips yet.')),
+        [] => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              'Clips will appear here once NightTalker hears something.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textMuted),
+            ),
+          ),
+        ),
         _ => ListView.builder(
+          padding: const EdgeInsets.all(16),
           itemCount: clips.length,
           itemBuilder: (context, index) {
             final clip = clips[index];
             final playing = _playingPath == clip.path;
-            return ListTile(
-              leading: IconButton(
-                icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_fill),
-                onPressed: () => _togglePlay(clip),
-              ),
-              title: Text(DateFormat.yMMMd().add_Hms().format(clip.recordedAt)),
-              subtitle: Text(_formatDuration(clip.duration)),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(icon: const Icon(Icons.share), tooltip: 'Share', onPressed: () => _share(clip)),
-                  IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: () => _delete(clip)),
-                ],
+            return Card(
+              child: ListTile(
+                leading: IconButton(
+                  icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                  onPressed: () => _togglePlay(clip),
+                ),
+                title: Text(DateFormat.yMMMd().add_Hms().format(clip.recordedAt)),
+                subtitle: Text(_formatDuration(clip.duration)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(icon: const Icon(Icons.share), tooltip: 'Share', onPressed: () => _share(clip)),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'Delete',
+                      onPressed: () => _delete(clip),
+                    ),
+                  ],
+                ),
               ),
             );
           },
